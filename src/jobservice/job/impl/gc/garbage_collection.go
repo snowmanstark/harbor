@@ -236,9 +236,9 @@ func (gc *GarbageCollector) mark(ctx job.Context) error {
 		gc.logger.Errorf("failed to get gc candidate: %v", err)
 		return err
 	}
-	if len(orphanBlobs) != 0 {
-		blobs = append(blobs, orphanBlobs...)
-	}
+	//if len(orphanBlobs) != 0 {
+	//	blobs = append(blobs, orphanBlobs...)
+	//}
 	if len(blobs) == 0 {
 		if err := saveGCRes(ctx, int64(0), int64(0), int64(0)); err != nil {
 			gc.logger.Errorf("failed to save the garbage collection results, errMsg=%v", err)
