@@ -81,6 +81,7 @@ func (c *controller) Start(ctx context.Context, policy Policy, trigger string) (
 	para["workers"] = policy.Workers
 	para["redis_url_reg"] = policy.ExtraAttrs["redis_url_reg"]
 	para["time_window"] = policy.ExtraAttrs["time_window"]
+	para["delete_concurrency"] = policy.ExtraAttrs["delete_concurrency"]
 
 	execID, err := c.exeMgr.Create(ctx, job.GarbageCollectionVendorType, -1, trigger, para)
 	if err != nil {

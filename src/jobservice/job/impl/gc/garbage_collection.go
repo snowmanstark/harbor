@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/url"
+	"golang.org/x/sync/errgroup"
 	"os"
 	"sync/atomic"
 	"time"
@@ -65,6 +66,7 @@ type GarbageCollector struct {
 	redisURL          string
 	deleteUntagged    bool
 	dryRun            bool
+	deleteConcurrency int64
 	// holds all of trashed artifacts' digest and repositories.
 	// The source data of trashedArts is the table ArtifactTrash and it's only used as a dictionary by sweep when to delete a manifest.
 	// As table blob has no repositories data, and the repositories are required when to delete a manifest, so use the table ArtifactTrash to capture them.
@@ -139,6 +141,14 @@ func (gc *GarbageCollector) parseParams(params job.Parameters) {
 		}
 	}
 
+	gc.deleteConcurrency = 1
+	concurrency, exist := params["delete_concurrency"]
+	if exist {
+		if concurrency, ok := concurrency.(float64); ok {
+			gc.deleteConcurrency = int64(concurrency)
+		}
+	}
+
 	// dry run: default is false. And for dry run we can have button in the UI.
 	gc.dryRun = false
 	dryRun, exist := params["dry_run"]
@@ -202,8 +212,8 @@ func (gc *GarbageCollector) Run(ctx job.Context, params job.Parameters) error {
 }
 
 // mark
-func (gc *GarbageCollector) mark(ctx job.Context) error {
-	arts, err := gc.deletedArt(ctx)
+func (gc *GarbageCollector) mark(jobCtx job.Context) error {
+	arts, err := gc.deletedArt(jobCtx)
 	if err != nil {
 		gc.logger.Errorf("failed to get deleted Artifacts in gc job, with error: %v", err)
 		return err
@@ -216,12 +226,12 @@ func (gc *GarbageCollector) mark(ctx job.Context) error {
 
 	// get gc candidates, and set the repositories.
 	// AS the reference count is calculated by joining table project_blob and blob, here needs to call removeUntaggedBlobs to remove these non-used blobs from table project_blob firstly.
-	orphanBlobs, err := gc.markOrSweepUntaggedBlobs(ctx)
-	if err != nil {
-		return err
-	}
+	//orphanBlobs, err := gc.markOrSweepUntaggedBlobs(jobCtx)
+	//if err != nil {
+	//	return err
+	//}
 
-	blobs, err := gc.uselessBlobs(ctx)
+	blobs, err := gc.uselessBlobs(jobCtx)
 	if err != nil {
 		gc.logger.Errorf("failed to get gc candidate: %v", err)
 		return err
@@ -238,6 +248,57 @@ func (gc *GarbageCollector) mark(ctx job.Context) error {
 	}
 
 	// update delete status for the candidates.
+	g, ctx := errgroup.WithContext(jobCtx.SystemContext())
+	ch := make(chan *blobModels.Blob, gc.deleteConcurrency)
+	results := make(chan *blobModels.Blob, gc.deleteConcurrency)
+
+	g.Go(func() error {
+		defer close(ch)
+		for _, blob := range blobs {
+			if gc.shouldStop(jobCtx) {
+				return errGcStop
+			}
+
+			select {
+			case ch <- blob:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+		return nil
+	})
+
+	workers := int32(gc.deleteConcurrency)
+	// launch goroutines
+	for i := 0; i < int(gc.deleteConcurrency); i++ {
+		g.Go(func() error {
+			defer func() {
+				// last worker should close channel
+				if atomic.AddInt32(&workers, -1) == 0 {
+					close(results)
+				}
+			}()
+			for blob := range ch {
+				if !gc.dryRun {
+					blob.Status = blobModels.StatusDelete
+					count, err := gc.blobMgr.UpdateBlobStatus(ctx, blob)
+					if err != nil {
+						gc.logger.Warningf("failed to mark gc candidate, skip it.: %s, error: %v", blob.Digest, err)
+						continue
+					}
+					if count == 0 {
+						gc.logger.Warningf("no blob found to mark gc candidate, skip it. ID:%d, digest:%s", blob.ID, blob.Digest)
+						continue
+					}
+				}
+				gc.logger.Infof("blob eligible for deletion: %s", blob.Digest)
+
+				results <- blob
+			}
+			return nil
+		})
+	}
+
 	blobCt := 0
 	mfCt := 0
 	makeSize := int64(0)
@@ -259,6 +320,7 @@ func (gc *GarbageCollector) mark(ctx job.Context) error {
 			}
 		}
 		gc.logger.Infof("blob eligible for deletion: %s", blob.Digest)
+	for blob := range results {
 		gc.deleteSet = append(gc.deleteSet, blob)
 		if blob.IsManifest() {
 			mfCt++
@@ -270,6 +332,7 @@ func (gc *GarbageCollector) mark(ctx job.Context) error {
 			makeSize = makeSize + blob.Size
 		}
 	}
+
 	gc.logger.Infof("%d blobs and %d manifests eligible for deletion", blobCt, mfCt)
 	gc.logger.Infof("The GC could free up %d MB space, the size is a rough estimation.", makeSize/1024/1024)
 
@@ -278,11 +341,11 @@ func (gc *GarbageCollector) mark(ctx job.Context) error {
 			gc.logger.Errorf("failed to save the garbage collection results, errMsg=%v", err)
 		}
 	}
-	return nil
+	return g.Wait()
 }
 
-func (gc *GarbageCollector) sweep(ctx job.Context) error {
-	gc.logger = ctx.GetLogger()
+func (gc *GarbageCollector) sweep(jobCtx job.Context) error {
+	gc.logger = jobCtx.GetLogger()
 	sweepSize := int64(0)
 	blobCnt := int64(0)
 	mfCnt := int64(0)

@@ -140,6 +140,20 @@ func GetBeegoMaxMemoryBytes() int64 {
 // GetBeegoMaxUploadSizeBytes returns the max upload size bytes of beego config
 func GetBeegoMaxUploadSizeBytes() int64 {
 	return DefaultMgr().Get(backgroundCtx, common.BeegoMaxUploadSizeBytes).GetInt64()
+// GetGCDefaultConcurrency returns the concurrency of deleting images within a gc run
+func GetGCDefaultConcurrency() int64 {
+	if env, exist := os.LookupEnv("GC_DELETE_CONCURRENCY"); exist {
+		concurrency, err := strconv.ParseInt(env, 10, 64)
+		if err == nil {
+			return concurrency
+		}
+	}
+	return common.DefaultGcDeleteConcurrency
+}
+
+// WithNotary returns a bool value to indicate if Harbor's deployed with Notary
+func WithNotary() bool {
+	return DefaultMgr().Get(backgroundCtx, common.WithNotary).GetBool()
 }
 
 // WithTrivy returns a bool value to indicate if Harbor's deployed with Trivy.
