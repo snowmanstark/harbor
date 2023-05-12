@@ -52,7 +52,7 @@ func (pj *Job) MaxFails() uint {
 
 // MaxCurrency is implementation of same method in Interface.
 func (pj *Job) MaxCurrency() uint {
-	return 0
+	return 4
 }
 
 // ShouldRetry indicates job can be retried if failed
@@ -83,7 +83,7 @@ func (pj *Job) Run(ctx job.Context, params job.Parameters) error {
 
 	// Log stage: start
 	repoPath := fmt.Sprintf("%s/%s", repo.Namespace, repo.Name)
-	myLogger.Infof("Run retention process.\n Repository: %s \n Rule Algorithm: %s \n Dry Run: %v", repoPath, liteMeta.Algorithm, isDryRun)
+	myLogger.Infof("Run retention process. Repository: %s  Rule Algorithm: %s  Dry Run: %v", repoPath, liteMeta.Algorithm, isDryRun)
 
 	// Stop check point 1:
 	if isStopped(ctx) {
