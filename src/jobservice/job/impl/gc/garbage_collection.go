@@ -212,8 +212,8 @@ func (gc *GarbageCollector) Run(ctx job.Context, params job.Parameters) error {
 }
 
 // mark
-func (gc *GarbageCollector) mark(jobCtx job.Context) error {
-	arts, err := gc.deletedArt(jobCtx)
+func (gc *GarbageCollector) mark(ctx job.Context) error {
+	arts, err := gc.deletedArt(ctx)
 	if err != nil {
 		gc.logger.Errorf("failed to get deleted Artifacts in gc job, with error: %v", err)
 		return err
@@ -226,12 +226,12 @@ func (gc *GarbageCollector) mark(jobCtx job.Context) error {
 
 	// get gc candidates, and set the repositories.
 	// AS the reference count is calculated by joining table project_blob and blob, here needs to call removeUntaggedBlobs to remove these non-used blobs from table project_blob firstly.
-	//orphanBlobs, err := gc.markOrSweepUntaggedBlobs(jobCtx)
+	//orphanBlobs, err := gc.markOrSweepUntaggedBlobs(ctx)
 	//if err != nil {
 	//	return err
 	//}
 
-	blobs, err := gc.uselessBlobs(jobCtx)
+	blobs, err := gc.uselessBlobs(ctx)
 	if err != nil {
 		gc.logger.Errorf("failed to get gc candidate: %v", err)
 		return err
@@ -248,14 +248,14 @@ func (gc *GarbageCollector) mark(jobCtx job.Context) error {
 	}
 
 	// update delete status for the candidates.
-	g, ctx := errgroup.WithContext(jobCtx.SystemContext())
+	g, ctx := errgroup.WithContext(ctx.SystemContext())
 	ch := make(chan *blobModels.Blob, gc.deleteConcurrency)
 	results := make(chan *blobModels.Blob, gc.deleteConcurrency)
 
 	g.Go(func() error {
 		defer close(ch)
 		for _, blob := range blobs {
-			if gc.shouldStop(jobCtx) {
+			if gc.shouldStop(ctx) {
 				return errGcStop
 			}
 
@@ -344,8 +344,8 @@ func (gc *GarbageCollector) mark(jobCtx job.Context) error {
 	return g.Wait()
 }
 
-func (gc *GarbageCollector) sweep(jobCtx job.Context) error {
-	gc.logger = jobCtx.GetLogger()
+func (gc *GarbageCollector) sweep(ctx job.Context) error {
+	gc.logger = ctx.GetLogger()
 	sweepSize := int64(0)
 	blobCnt := int64(0)
 	mfCnt := int64(0)
