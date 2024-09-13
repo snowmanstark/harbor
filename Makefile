@@ -108,7 +108,8 @@ TRIVYVERSION=v0.54.1
 TRIVYADAPTERVERSION=v0.31.4
 
 # version of registry for pulling the source code
-REGISTRY_SRC_TAG=v2.8.3
+# REGISTRY_SRC_TAG=v2.8.3
+REGISTRY_SRC_TAG=v2.8.3-harbor_gc_optimization_new
 
 # dependency binaries
 REGISTRYURL=https://storage.googleapis.com/harbor-builds/bin/registry/release-${REGISTRYVERSION}/registry
