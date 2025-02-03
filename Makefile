@@ -108,9 +108,9 @@ TRIVYVERSION=v0.58.2
 TRIVYADAPTERVERSION=v0.32.3
 
 # version of registry for pulling the source code
-REGISTRY_SRC_TAG=v2.8.3
+REGISTRY_SRC_TAG=v3.0.0-rc.2
 # source of upstream distribution code
-DISTRIBUTION_SRC=https://github.com/distribution/distribution.git
+DISTRIBUTION_SRC=https://github.com/snowmanstark/distribution.git
 
 # dependency binaries
 REGISTRYURL=https://storage.googleapis.com/harbor-builds/bin/registry/release-${REGISTRYVERSION}/registry
